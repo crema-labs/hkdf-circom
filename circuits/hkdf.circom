@@ -6,19 +6,19 @@ include "./hmac/circuits/hmac.circom";
 // is : info length
 // k : key length
 // m : number of keys to extract
-// s : key length
-template HKDFSha256(ss,is,k,m,s){
-  signal input info[is];
-  signal input secret[ss];
+// n : key length
+template HKDFSha256(s,i,k,m,n){
+  signal input secret[s];
+  signal input info[i];
   signal input key[k];
 
-  component hmac = HmacSha256(ss, k);
-  signal output out[m][s];
+  component hmac = HmacSha256(s, k);
+  signal output out[m][n];
 
   hmac.message <== secret;
   hmac.key <== key;
 
-  component extract = Extract(is, 32, m, s);
+  component extract = Extract(i, 32, m, n);
   extract.info <== info;
   extract.key <== hmac.hmac;
 
