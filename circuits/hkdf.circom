@@ -1,4 +1,4 @@
-pragma circom 2.1.5;
+pragma circom 2.1.8;
 
 include "./hmac/circuits/hmac.circom";
 
@@ -30,7 +30,7 @@ template HKDFSha256(ss,is,k,m,s){
 // out : 32 bytes from sha256 hmac
 template Expand(n,k){
   signal input secret[n];
-  signal input key[n];
+  signal input key[k];
 
   component hmac = HmacSha256(n, k);
   signal output out[32];
