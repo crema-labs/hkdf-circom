@@ -32,6 +32,9 @@ jobs:
 
       - name: Print Circom version
         run: circom --version
+        
+      - name: Git submodules Update
+        run: git submodule update --init
 
       - name: Install dependencies
         run: yarn
