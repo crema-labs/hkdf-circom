@@ -1,0 +1,3 @@
+[submodule "circuits/hmac"]
+	path = circuits/hmac
+	url = http://github.com/crema-labs/hmac-circom/
