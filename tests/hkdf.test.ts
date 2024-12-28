@@ -2,98 +2,131 @@ import { WitnessTester } from "circomkit";
 import { circomkit } from "./common";
 
 describe("HKDF", () => {
-  describe("Expand", () => {
-    let circuit: WitnessTester<["secret", "key"], ["out"]>;
-    before(async () => {
-      circuit = await circomkit.WitnessTester(`Expand`, {
-        file: "hkdf",
-        template: "Expand",
-        params: [32, 32],
-      });
-      console.log("#constraints:", await circuit.getConstraintCount());
-    });
+  // tests are based on RFC 5869 test vectors https://www.rfc-editor.org/rfc/rfc5869.html#appendix-A
+  const testCases = [
+    {
+      name: "Test Case 1",
+      data: {
+        IKM: "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        salt: "000102030405060708090a0b0c",
+        info: "f0f1f2f3f4f5f6f7f8f9",
+        L: 42,
+        PRK: "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5",
+        OKM: "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
+      },
+    },
+    {
+      name: "Test Case 2",
+      data: {
+        IKM: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f",
+        salt: "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+        info: "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+        L: 82,
+        PRK: "06a6b88c5853361a06104c9ceb35b45cef760014904671014a193f40c15fc244",
+        OKM: "b11e398dc80327a1c8e7f78c596a49344f012eda2d4efad8a050cc4c19afa97c59045a99cac7827271cb41c65e590e09da3275600c2f09b8367793a9aca3db71cc30c58179ec3e87c14c01d5c1f3434f1d87",
+      },
+    },
+    {
+      name: "Test Case 3",
+      data: {
+        IKM: "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        salt: "",
+        info: "",
+        L: 42,
+        PRK: "19ef24a32c717b167f33a91d6f648bdf96596776afdb6377ac434c1c293ccb04",
+        OKM: "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8",
+      },
+    },
+  ];
 
-    it("should expand master key from secret", async () => {
-      await circuit.expectPass(
-        {
-          secret: [
-            0x10, 0xd9, 0xcb, 0x53, 0xd1, 0xa4, 0x05, 0xcf, 0xe2, 0x68, 0x6e, 0x08, 0x35, 0x90, 0x4d, 0x48, 0x43, 0x5e,
-            0x80, 0x54, 0xa7, 0x9f, 0x98, 0x56, 0x83, 0xd0, 0xff, 0x72, 0x59, 0xf7, 0xa8, 0x04,
-          ],
-          key: [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-          ],
-        },
-        {
-          out: [
-            0x8b, 0xeb, 0x33, 0x8d, 0x43, 0x1d, 0x24, 0x3c, 0xee, 0xaa, 0xa6, 0xf0, 0xcb, 0x57, 0x26, 0xfb, 0xc5, 0xa3,
-            0x5c, 0x5e, 0x45, 0xbf, 0x99, 0x2c, 0xc3, 0xe2, 0x3b, 0x5b, 0xc2, 0xe4, 0xcc, 0xea,
-          ],
-        }
-      );
-    });
-  });
-  describe("Extract", () => {
-    let circuit: WitnessTester<["info", "key"], ["out"]>;
-    before(async () => {
-      circuit = await circomkit.WitnessTester(`Extract`, {
-        file: "hkdf",
-        template: "Extract",
-        params: [0, 32, 2, 16],
-      });
-      console.log("#constraints:", await circuit.getConstraintCount());
-    });
+  testCases.forEach((testCase) => {
+    describe(testCase.name, () => {
+      const { IKM, salt, info, L, PRK, OKM } = testCase.data;
+      const ikmBuf = Buffer.from(IKM, "hex");
+      const saltBuf = Buffer.from(salt, "hex");
+      const infoBuf = Buffer.from(info, "hex");
+      const prkBuf = Buffer.from(PRK, "hex");
+      const okmBuf = Buffer.from(OKM, "hex");
 
-    it("should extract two 16 bytes keys from key", async () => {
-      await circuit.expectPass(
-        {
-          info: [],
-          key: [
-            0x8b, 0xeb, 0x33, 0x8d, 0x43, 0x1d, 0x24, 0x3c, 0xee, 0xaa, 0xa6, 0xf0, 0xcb, 0x57, 0x26, 0xfb, 0xc5, 0xa3,
-            0x5c, 0x5e, 0x45, 0xbf, 0x99, 0x2c, 0xc3, 0xe2, 0x3b, 0x5b, 0xc2, 0xe4, 0xcc, 0xea,
-          ],
-        },
-        {
-          out: [
-            [0x5b, 0x02, 0xd2, 0x11, 0x3a, 0xbb, 0x74, 0x49, 0xc3, 0x7d, 0x57, 0xe0, 0xc7, 0x7a, 0x99, 0xc4],
-            [0x43, 0x7a, 0xb4, 0xc1, 0x85, 0x2f, 0xa9, 0xcc, 0x8e, 0xc5, 0xbd, 0x64, 0x97, 0xf0, 0x31, 0x91],
-          ],
-        }
-      );
-    });
-  });
-  describe("HKDFSha256", () => {
-    let circuit: WitnessTester<["secret", "info", "key"], ["out"]>;
-    before(async () => {
-      circuit = await circomkit.WitnessTester(`HKDF`, {
-        file: "hkdf",
-        template: "HKDFSha256",
-        params: [32, 0, 32, 2, 16],
-      });
-      console.log("#constraints:", await circuit.getConstraintCount());
-    });
+      const infolen = infoBuf.length;
+      const saltlen = saltBuf.length;
+      const ikmlen = ikmBuf.length;
 
-    it("should extract two 16 bytes keys from key", async () => {
-      await circuit.expectPass(
-        {
-          secret: [
-            0x10, 0xd9, 0xcb, 0x53, 0xd1, 0xa4, 0x05, 0xcf, 0xe2, 0x68, 0x6e, 0x08, 0x35, 0x90, 0x4d, 0x48, 0x43, 0x5e,
-            0x80, 0x54, 0xa7, 0x9f, 0x98, 0x56, 0x83, 0xd0, 0xff, 0x72, 0x59, 0xf7, 0xa8, 0x04,
-          ],
-          info: [],
-          key: [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-          ],
-        },
-        {
-          out: [
-            [0x5b, 0x02, 0xd2, 0x11, 0x3a, 0xbb, 0x74, 0x49, 0xc3, 0x7d, 0x57, 0xe0, 0xc7, 0x7a, 0x99, 0xc4],
-            [0x43, 0x7a, 0xb4, 0xc1, 0x85, 0x2f, 0xa9, 0xcc, 0x8e, 0xc5, 0xbd, 0x64, 0x97, 0xf0, 0x31, 0x91],
-          ],
-        }
-      );
+      describe("EXTRACT", () => {
+        let circuit: WitnessTester<["salt", "key"], ["out"]>;
+
+        before(async () => {
+          circuit = await circomkit.WitnessTester(`Expand`, {
+            file: "hkdf",
+            template: "Extract",
+            params: [saltlen, ikmlen],
+          });
+          console.log(`${testCase.name} EXTRACT #constraints:`, await circuit.getConstraintCount());
+        });
+
+        it("should extract pseudorandom key", async () => {
+          await circuit.expectPass(
+            {
+              salt: Array.from(saltBuf),
+              key: Array.from(ikmBuf),
+            },
+            {
+              out: Array.from(prkBuf),
+            }
+          );
+        });
+      });
+
+      describe("EXPAND", () => {
+        let circuit: WitnessTester<["info", "key"], ["out"]>;
+
+        before(async () => {
+          circuit = await circomkit.WitnessTester(`HKDF`, {
+            file: "hkdf",
+            template: "Expand",
+            params: [infolen, 32, 1, L],
+          });
+          console.log(`${testCase.name} EXPAND #constraints:`, await circuit.getConstraintCount());
+        });
+
+        it("should expand from pseudorandom key", async () => {
+          await circuit.expectPass(
+            {
+              info: Array.from(infoBuf),
+              key: Array.from(prkBuf),
+            },
+            {
+              out: [Array.from(okmBuf)],
+            }
+          );
+        });
+      });
+
+      describe("HKDFSHA256", () => {
+        let circuit: WitnessTester<["salt", "info", "key"], ["out"]>;
+
+        before(async () => {
+          circuit = await circomkit.WitnessTester(`HKDF`, {
+            file: "hkdf",
+            template: "HKDFSha256",
+            params: [saltlen, infolen, ikmlen, 1, L],
+          });
+          console.log(`${testCase.name} HKDFSHA256 #constraints:`, await circuit.getConstraintCount());
+        });
+
+        it("should extract and expand from input key material", async () => {
+          await circuit.expectPass(
+            {
+              salt: Array.from(saltBuf),
+              info: Array.from(infoBuf),
+              key: Array.from(ikmBuf),
+            },
+            {
+              out: [Array.from(okmBuf)],
+            }
+          );
+        });
+      });
     });
   });
 });
