@@ -2,90 +2,93 @@ pragma circom 2.1.8;
 
 include "./hmac/circuits/hmac.circom";
 
-// ss : secret length
-// is : info length
+// s : salt length
+// i : info length
 // k : key length
 // m : number of keys to extract
 // n : key length
 template HKDFSha256(s,i,k,m,n){
-  signal input secret[s];
+  signal input salt[s];
   signal input info[i];
   signal input key[k];
 
-  component hmac = HmacSha256(s, k);
   signal output out[m][n];
 
-  hmac.message <== secret;
-  hmac.key <== key;
+  component extract = Extract(s, k);
+  extract.salt <== salt;
+  extract.key <== key;
 
-  component extract = Extract(i, 32, m, n);
-  extract.info <== info;
-  extract.key <== hmac.hmac;
+  component expand = Expand(i, 32, m, n);
+  expand.info <== info;
+  expand.key <== extract.out;
 
-  out <== extract.out;
+  out <== expand.out;
 }
 
-// n : message length
+// s : salt length
 // k : key length
 // out : 32 bytes from sha256 hmac
-template Expand(n,k){
-  signal input secret[n];
+template Extract(s,k){
+  signal input salt[s];
   signal input key[k];
 
-  component hmac = HmacSha256(n, k);
+  component hmac = HmacSha256(k,s);
   signal output out[32];
 
-  hmac.message <== secret;
-  hmac.key <== key;
+  hmac.message <== key;
+  hmac.key <== salt;
 
   out <== hmac.hmac;
 }
 
-// n : message length
+// i : info length
 // k : key length
 // m : number of keys to extract
-// s : key length
-template Extract(n,k,m,s){
-  signal input info[n];
+// n : key length
+template Expand(i,k,m,n){
+  signal input info[i];
   signal input key[k];
   
-  var size = 32 + n + 1; // 32 bytes for hmac, n bytes for info, 1 byte for counter
+  var size = 32 + i + 1; // 32 bytes for hmac, i bytes for info, 1 byte for counter
 
   // hash size is 32 bytes 
-  var rounds = (m*s)\(32);
-  rounds = (rounds * 32) < (m*s) ? rounds + 1 : rounds;
+  var rounds = (m*n)\(32);
+  rounds = (rounds * 32) < (m*n) ? rounds + 1 : rounds;
 
 
   component hmac[rounds];
 
   signal expandedKeys [rounds][32];
-  signal output out[m][s];
+  signal output out[m][n];
 
-  hmac[0] = HmacSha256(1, k);
-  hmac[0].message[0] <== 1; // here counter is byte(1)
-  hmac[0].key <== key;
+  hmac[0] = HmacSha256(i+1,k);
+  hmac[0].key <== key; 
+  for (var j = 0; j < i; j++){
+      hmac[0].message[j] <== info[j];
+  }
+  hmac[0].message[i] <== 1; // here counter is byte(1)
   expandedKeys[0] <== hmac[0].hmac;
   
   var counter = 2; // counter is byte(2)
 
-  for(var i = 1; i < rounds; i++){
-    hmac[i] = HmacSha256(size, k);
-    for (var j = 0; j < 32; j++){
-      hmac[i].message[j] <== expandedKeys[i-1][j];
+  for(var j = 1; j < rounds; j++){
+    hmac[j] = HmacSha256(size, k);
+    for (var o = 0; o < 32; o++){
+      hmac[j].message[o] <== expandedKeys[j-1][o];
     }
-    for (var j = 0; j < n; j++){
-      hmac[i].message[32+j] <== info[j];
+    for (var o = 0; o < i; o++){
+      hmac[j].message[32+o] <== info[o];
     }
-    hmac[i].message[32+n] <== counter;
-    hmac[i].key <== key;
-    expandedKeys[i] <== hmac[i].hmac;
+    hmac[j].message[32+i] <== counter;
+    hmac[j].key <== key;
+    expandedKeys[j] <== hmac[j].hmac;
     counter = counter + 1;
   }
 
   var byteIndex = 0;
-  for (var i = 0; i < m; i++) {
-    for (var j = 0; j < s; j++) {
-      out[i][j] <== expandedKeys[byteIndex \ 32][byteIndex % 32];
+  for (var j = 0; j < m; j++) {
+    for (var o = 0; o < n; o++) {
+      out[j][o] <== expandedKeys[byteIndex \ 32][byteIndex % 32];
       byteIndex++;
     }
   }
